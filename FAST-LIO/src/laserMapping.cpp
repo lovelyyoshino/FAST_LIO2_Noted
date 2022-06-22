@@ -73,7 +73,7 @@ int kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0, kdtree_delete_c
 bool runtime_pos_log = false, pcd_save_en = false, time_sync_en = false;
 /**************************/
 
-float res_last[100000] = {0.0};
+float res_last[100000] = {0.0}; //残差，点到面距离平方和
 float DET_RANGE = 300.0f;
 const float MOV_THRESHOLD = 1.5f;
 
@@ -91,33 +91,33 @@ double cube_len = 0, HALF_FOV_COS = 0, FOV_DEG = 0, total_distance = 0, lidar_en
 // scan_count：接收到的激光雷达Msg的总数，publish_count：接收到的IMU的Msg的总数
 int effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
 int iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudValidNum = 0;
-bool point_selected_surf[100000] = {0};
+bool point_selected_surf[100000] = {0}; // 是否为平面特征点
 // lidar_pushed：用于判断激光雷达数据是否从缓存队列中拿到meas中的数据
 bool lidar_pushed, flg_reset, flg_exit = false, flg_EKF_inited;
 bool scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
 
 vector<vector<int>> pointSearchInd_surf;
-vector<BoxPointType> cub_needrm;
+vector<BoxPointType> cub_needrm; // ikd-tree中，地图需要移除的包围盒序列
 vector<PointVector> Nearest_Points;
 vector<double> extrinT(3, 0.0);
 vector<double> extrinR(9, 0.0);
 deque<double> time_buffer;                    // 激光雷达数据时间戳缓存队列
-deque<PointCloudXYZI::Ptr> lidar_buffer;      // 激光雷达数据缓存队列
+deque<PointCloudXYZI::Ptr> lidar_buffer;      //记录特征提取或间隔采样后的lidar（特征）数据
 deque<sensor_msgs::Imu::ConstPtr> imu_buffer; // IMU数据缓存队列
 
 //一些点云变量
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
-PointCloudXYZI::Ptr feats_down_body(new PointCloudXYZI());
-PointCloudXYZI::Ptr feats_down_world(new PointCloudXYZI());
-PointCloudXYZI::Ptr normvec(new PointCloudXYZI(100000, 1));
+PointCloudXYZI::Ptr feats_down_body(new PointCloudXYZI());  //畸变纠正后降采样的单帧点云，lidar系
+PointCloudXYZI::Ptr feats_down_world(new PointCloudXYZI()); //畸变纠正后降采样的单帧点云，w系
+PointCloudXYZI::Ptr normvec(new PointCloudXYZI(100000, 1)); //特征点在地图中对应点的，局部平面参数,w系
 PointCloudXYZI::Ptr laserCloudOri(new PointCloudXYZI(100000, 1));
-PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(100000, 1));
-PointCloudXYZI::Ptr _featsArray;
+PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(100000, 1)); //对应点法相量
+PointCloudXYZI::Ptr _featsArray;                                  // ikd-tree中，map需要移除的点云序列
 
 //下采样的体素点云
-pcl::VoxelGrid<PointType> downSizeFilterSurf;
-pcl::VoxelGrid<PointType> downSizeFilterMap;
+pcl::VoxelGrid<PointType> downSizeFilterSurf; //单帧内降采样使用voxel grid
+pcl::VoxelGrid<PointType> downSizeFilterMap;  //未使用
 
 KD_TREE ikdtree;
 
@@ -125,15 +125,15 @@ V3F XAxisPoint_body(LIDAR_SP_LEN, 0.0, 0.0);
 V3F XAxisPoint_world(LIDAR_SP_LEN, 0.0, 0.0);
 V3D euler_cur;
 V3D position_last(Zero3d);
-V3D Lidar_T_wrt_IMU(Zero3d);
-M3D Lidar_R_wrt_IMU(Eye3d);
+V3D Lidar_T_wrt_IMU(Zero3d); // T lidar to imu (imu = r * lidar + t)
+M3D Lidar_R_wrt_IMU(Eye3d);  // R lidar to imu (imu = r * lidar + t)
 
 /*** EKF inputs and output ***/
 // ESEKF操作
 MeasureGroup Measures;
-esekfom::esekf<state_ikfom, 12, input_ikfom> kf;
+esekfom::esekf<state_ikfom, 12, input_ikfom> kf; // 状态，噪声维度，输入
 state_ikfom state_point;
-vect3 pos_lid;
+vect3 pos_lid; // world系下lidar坐标
 
 //输出的路径参数
 nav_msgs::Path path;              //包含了一系列位姿
@@ -1041,7 +1041,7 @@ int main(int argc, char **argv)
             /*** 迭代状态估计 ***/
             double t_update_start = omp_get_wtime();
             double solve_H_time = 0;
-            //迭代卡尔曼滤波更新
+            //迭代卡尔曼滤波更新，更新地图信息
             kf.update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
             state_point = kf.get_x();
             euler_cur = SO3ToEuler(state_point.rot);
