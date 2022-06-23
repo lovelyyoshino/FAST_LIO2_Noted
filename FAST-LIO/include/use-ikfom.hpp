@@ -9,16 +9,20 @@ typedef MTK::S2<double, 98090, 10000, 1> S2; // S2 流形
 typedef MTK::vect<1, double> vect1;
 typedef MTK::vect<2, double> vect2;
 
+// 定义的ieskf状态空间
 MTK_BUILD_MANIFOLD(state_ikfom,
 				   ((vect3, pos))((SO3, rot))((SO3, offset_R_L_I))((vect3, offset_T_L_I))((vect3, vel))((vect3, bg))((vect3, ba)) // S2流形,grav为负值
 				   ((S2, grav)));
 
+// 定义的输入状态
 MTK_BUILD_MANIFOLD(input_ikfom,
 				   ((vect3, acc))((vect3, gyro)));
 
+//定义的协方差噪声格式
 MTK_BUILD_MANIFOLD(process_noise_ikfom,
 				   ((vect3, ng))((vect3, na))((vect3, nbg))((vect3, nba)));
 
+// 噪声协方差初始化
 MTK::get_cov<process_noise_ikfom>::type process_noise_cov()
 {
 	MTK::get_cov<process_noise_ikfom>::type cov = MTK::get_cov<process_noise_ikfom>::type::Zero();

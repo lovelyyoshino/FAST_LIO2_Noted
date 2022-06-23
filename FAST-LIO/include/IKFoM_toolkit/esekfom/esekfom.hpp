@@ -100,7 +100,7 @@ namespace esekfom
 		Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> h_x;
 		Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> R;
 	};
-	//状态量，噪声，输入状态量
+	//状态量，噪声维度，输入状态量这三个参数输入
 	template <typename state, int process_noise_dof, typename input = state, typename measurement = state, int measurement_noise_dof = 0>
 	class esekf
 	{
@@ -137,7 +137,7 @@ namespace esekfom
 		typedef Eigen::Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic> measurementnoisecovariance_dyn;
 
 		esekf(const state &x = state(),
-			  const cov &P = cov::Identity()) : x_(x), P_(P)
+			  const cov &P = cov::Identity()) : x_(x), P_(P) // esekf初始化，主要是初始化了x_和P_
 		{
 #ifdef USE_sparse
 			SparseMatrix<scalar_type> ref(n, n);
@@ -2129,12 +2129,12 @@ namespace esekfom
 				x_.build_vect_state();
 			}
 		}
-
+		// 修改P_的状态
 		void change_P(cov &input_cov)
 		{
 			P_ = input_cov;
 		}
-
+		// 获得x_的状态
 		const state &get_x() const
 		{
 			return x_;
