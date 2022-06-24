@@ -39,7 +39,7 @@ MTK::get_cov<process_noise_ikfom>::type process_noise_cov()
 // fast_lio2论文公式(2), 起始这里的f就是将imu的积分方程组成矩阵形式然后再去计算
 Eigen::Matrix<double, 24, 1> get_f(state_ikfom &s, const input_ikfom &in)
 {
-	Eigen::Matrix<double, 24, 1> res = Eigen::Matrix<double, 24, 1>::Zero(); // 将imu积分方程矩阵初始化为0,这里的24个对应了速度(3)，角速度(3),加速度(3),角速度偏置(3),加速度偏置(3),位置(3),外参偏置(3),外参偏置(3)
+	Eigen::Matrix<double, 24, 1> res = Eigen::Matrix<double, 24, 1>::Zero(); // 将imu积分方程矩阵初始化为0,这里的24个对应了速度(3)，角速度(3),外参偏置T(3),外参偏置R(3)，加速度(3),角速度偏置(3),加速度偏置(3),位置(3)，与论文公式不一致
 	vect3 omega;
 	in.gyro.boxminus(omega, s.bg); // 得到imu的角速度
 	// 加速度转到世界坐标系
@@ -63,7 +63,7 @@ Eigen::Matrix<double, 24, 23> df_dx(state_ikfom &s, const input_ikfom &in)
 	vect3 omega;
 	in.gyro.boxminus(omega, s.bg);												  //拿到角速度
 	cov.template block<3, 3>(12, 3) = -s.rot.toRotationMatrix() * MTK::hat(acc_); //这里的-s.rot.toRotationMatrix()是因为论文中的矩阵是逆时针旋转的
-	cov.template block<3, 3>(12, 18) = -s.rot.toRotationMatrix();				  // 将角度转到存入的矩阵中
+	cov.template block<3, 3>(12, 18) = -s.rot.toRotationMatrix();				  // 将角度转到存入的矩阵中（应该与上面颠倒了）
 	Eigen::Matrix<state_ikfom::scalar, 2, 1> vec = Eigen::Matrix<state_ikfom::scalar, 2, 1>::Zero();
 	Eigen::Matrix<state_ikfom::scalar, 3, 2> grav_matrix;
 	s.S2_Mx(grav_matrix, vec, 21);									//将vec的2*1矩阵转为grav_matrix的3*2矩阵

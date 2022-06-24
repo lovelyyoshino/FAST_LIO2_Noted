@@ -995,10 +995,10 @@ int main(int argc, char **argv)
             lasermap_fov_segment();
 
             /*** downsample the feature points in a scan ***/
-            downSizeFilterSurf.setInputCloud(feats_undistort);
-            downSizeFilterSurf.filter(*feats_down_body);
-            t1 = omp_get_wtime();
-            feats_down_size = feats_down_body->points.size();
+            downSizeFilterSurf.setInputCloud(feats_undistort); //获得去畸变后的点云数据
+            downSizeFilterSurf.filter(*feats_down_body);       //滤波降采样后的点云数据
+            t1 = omp_get_wtime();                              //记录时间
+            feats_down_size = feats_down_body->points.size();  //记录滤波后的点云数量
             /*** initialize the map kdtree ***/
             // 构建kd树
             if (ikdtree.Root_Node == nullptr)
@@ -1007,13 +1007,13 @@ int main(int argc, char **argv)
                 {
                     // 设置ikd tree的降采样参数
                     ikdtree.set_downsample_param(filter_size_map_min);
-                    feats_down_world->resize(feats_down_size);
+                    feats_down_world->resize(feats_down_size); //将下采样得到的地图点大小于body系大小一致
                     for (int i = 0; i < feats_down_size; i++)
                     {
-                        pointBodyToWorld(&(feats_down_body->points[i]), &(feats_down_world->points[i]));
+                        pointBodyToWorld(&(feats_down_body->points[i]), &(feats_down_world->points[i])); //将下采样得到的地图点转换为世界坐标系下的点云
                     }
                     // 组织ikd tree
-                    ikdtree.Build(feats_down_world->points);
+                    ikdtree.Build(feats_down_world->points); //构建ikd树
                 }
                 continue;
             }
@@ -1031,20 +1031,20 @@ int main(int argc, char **argv)
             // 外参，旋转矩阵转欧拉角
             V3D ext_euler = SO3ToEuler(state_point.offset_R_L_I);
             fout_pre << setw(20) << Measures.lidar_beg_time - first_lidar_time << " " << euler_cur.transpose() << " " << state_point.pos.transpose() << " " << ext_euler.transpose() << " " << state_point.offset_T_L_I.transpose() << " " << state_point.vel.transpose()
-                     << " " << state_point.bg.transpose() << " " << state_point.ba.transpose() << " " << state_point.grav << endl;
+                     << " " << state_point.bg.transpose() << " " << state_point.ba.transpose() << " " << state_point.grav << endl; //输出预测的结果
 
             if (0) // If you need to see map point, change to "if(1)"
             {
                 // 释放PCL_Storage的内存
                 PointVector().swap(ikdtree.PCL_Storage);
-                // 把树展平
+                // 把树展平用于展示
                 ikdtree.flatten(ikdtree.Root_Node, ikdtree.PCL_Storage, NOT_RECORD);
                 featsFromMap->clear();
                 featsFromMap->points = ikdtree.PCL_Storage;
             }
 
-            pointSearchInd_surf.resize(feats_down_size);
-            Nearest_Points.resize(feats_down_size);
+            pointSearchInd_surf.resize(feats_down_size); //搜索索引
+            Nearest_Points.resize(feats_down_size);      //将降采样处理后的点云用于搜索最近点
             int rematch_num = 0;
             bool nearest_search_en = true; //
 

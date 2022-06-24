@@ -108,9 +108,9 @@ namespace esekfom
 		typedef esekf self;
 		enum
 		{
-			n = state::DOF,
-			m = state::DIM,
-			l = measurement::DOF
+			n = state::DOF,		 //状态量自由度，一般代表x的维度
+			m = state::DIM,		 //状态量自由度，一般代表res的维度
+			l = measurement::DOF //测量噪声维度
 		};
 
 	public:
@@ -276,42 +276,43 @@ namespace esekfom
 			x_.build_vect_state();
 		}
 
-		// iterated error state EKF propogation
-		void predict(double &dt, processnoisecovariance &Q, const input &i_in)
+		// 迭代误差状态EKF传播
+		void predict(double &dt, processnoisecovariance &Q, const input &i_in) //这里的参数均从use-ikfom中传入
 		{
 			// f函数对应use-ikfom.hpp中的 get_f函数，对应fast_lio2论文公式(2)
-			flatted_state f_ = f(x_, i_in);
+			flatted_state f_ = f(x_, i_in); // m*1
 			// 对应use-ikfom.hpp中的 df_dx函数
 			// 对应fast_lio2论文公式(7)
-			cov_ f_x_ = f_x(x_, i_in);
-			cov f_x_final;
-
+			cov_ f_x_ = f_x(x_, i_in); // m*n
+			cov f_x_final;			   // n*n
+			// 对应use-ikfom.hpp中的 df_dw函数
 			// 对应fast_lio2论文公式(7)
 			Matrix<scalar_type, m, process_noise_dof> f_w_ = f_w(x_, i_in);
 			Matrix<scalar_type, n, process_noise_dof> f_w_final;
-			state x_before = x_;
-			// 对应fast_lio2论文公式(2)
-			x_.oplus(f_, dt);
+			state x_before = x_; //保存x_的值，用于后面的更新
 
-			F_x1 = cov::Identity();
+			// 对应fast_lio2论文公式(2)
+			x_.oplus(f_, dt); //这个是公式2的整个函数，用于更新x的
+
+			F_x1 = cov::Identity(); //状态转移矩阵
 			// 更新f_x和f_w
 			for (std::vector<std::pair<std::pair<int, int>, int>>::iterator it = x_.vect_state.begin(); it != x_.vect_state.end(); it++)
 			{
-				int idx = (*it).first.first;
-				int dim = (*it).first.second;
-				int dof = (*it).second;
+				int idx = (*it).first.first;  //状态变量的索引
+				int dim = (*it).first.second; //状态变量的维数
+				int dof = (*it).second;		  //状态变量的自由度
 				for (int i = 0; i < n; i++)
 				{
 					for (int j = 0; j < dof; j++)
 					{
-						f_x_final(idx + j, i) = f_x_(dim + j, i);
+						f_x_final(idx + j, i) = f_x_(dim + j, i); //更新f_x_final，形成n*n阵，用于更新
 					}
 				}
 				for (int i = 0; i < process_noise_dof; i++)
 				{
 					for (int j = 0; j < dof; j++)
 					{
-						f_w_final(idx + j, i) = f_w_(dim + j, i);
+						f_w_final(idx + j, i) = f_w_(dim + j, i); //更新f_w_final，形成n*dof，用于更新
 					}
 				}
 			}
@@ -319,14 +320,14 @@ namespace esekfom
 			MTK::vect<3, scalar_type> seg_SO3;
 			for (std::vector<std::pair<int, int>>::iterator it = x_.SO3_state.begin(); it != x_.SO3_state.end(); it++)
 			{
-				int idx = (*it).first;
-				int dim = (*it).second;
+				int idx = (*it).first;	//状态变量的索引
+				int dim = (*it).second; //状态变量的维数
 				for (int i = 0; i < 3; i++)
 				{
-					seg_SO3(i) = -1 * f_(dim + i) * dt;
+					seg_SO3(i) = -1 * f_(dim + i) * dt; //拿到S03更新值
 				}
-				MTK::SO3<scalar_type> res;
-				res.w() = MTK::exp<scalar_type, 3>(res.vec(), seg_SO3, scalar_type(1 / 2));
+				MTK::SO3<scalar_type> res;													//残差计算
+				res.w() = MTK::exp<scalar_type, 3>(res.vec(), seg_SO3, scalar_type(1 / 2)); //残差计算
 #ifdef USE_sparse
 				res_temp_SO3 = res.toRotationMatrix();
 				for (int i = 0; i < 3; i++)
@@ -337,12 +338,12 @@ namespace esekfom
 					}
 				}
 #else
-				F_x1.template block<3, 3>(idx, idx) = res.toRotationMatrix();
+				F_x1.template block<3, 3>(idx, idx) = res.toRotationMatrix(); //更新f_x_1
 #endif
-				res_temp_SO3 = MTK::A_matrix(seg_SO3);
+				res_temp_SO3 = MTK::A_matrix(seg_SO3); //转为矩阵形式
 				for (int i = 0; i < n; i++)
 				{
-					f_x_final.template block<3, 1>(idx, i) = res_temp_SO3 * (f_x_.template block<3, 1>(dim, i));
+					f_x_final.template block<3, 1>(idx, i) = res_temp_SO3 * (f_x_.template block<3, 1>(dim, i)); // F矩阵
 				}
 				for (int i = 0; i < process_noise_dof; i++)
 				{
@@ -1772,7 +1773,7 @@ namespace esekfom
 			}
 		}
 
-		// iterated error state EKF update modified for one specific system.
+		// 迭代错误状态EKF更新修改为一个特定的系统
 		void update_iterated_dyn_share_modified(double R, double &solve_time)
 		{
 

@@ -26,22 +26,22 @@ KD_TREE::~KD_TREE()
     Rebuild_Logger.clear();
 }
 
-void KD_TREE::Set_delete_criterion_param(float delete_param)
+void KD_TREE::Set_delete_criterion_param(float delete_param) //设置删除标准参数
 {
     delete_criterion_param = delete_param;
 }
 
-void KD_TREE::Set_balance_criterion_param(float balance_param)
+void KD_TREE::Set_balance_criterion_param(float balance_param) //设置平衡阈值
 {
     balance_criterion_param = balance_param;
 }
 
-void KD_TREE::set_downsample_param(float downsample_param)
+void KD_TREE::set_downsample_param(float downsample_param) //设置下采样的参数
 {
     downsample_size = downsample_param;
 }
 
-void KD_TREE::InitializeKDTree(float delete_param, float balance_param, float box_length)
+void KD_TREE::InitializeKDTree(float delete_param, float balance_param, float box_length) //初始化kd-tree
 {
     Set_delete_criterion_param(delete_param);
     Set_balance_criterion_param(balance_param);
@@ -51,28 +51,28 @@ void KD_TREE::InitializeKDTree(float delete_param, float balance_param, float bo
 // 初始化根节点
 void KD_TREE::InitTreeNode(KD_TREE_NODE *root)
 {
-    root->point.x = 0.0f;
+    root->point.x = 0.0f; //初始化根节点的坐标
     root->point.y = 0.0f;
     root->point.z = 0.0f;
-    root->node_range_x[0] = 0.0f;
+    root->node_range_x[0] = 0.0f; //初始化根节点的范围
     root->node_range_x[1] = 0.0f;
     root->node_range_y[0] = 0.0f;
     root->node_range_y[1] = 0.0f;
     root->node_range_z[0] = 0.0f;
     root->node_range_z[1] = 0.0f;
-    root->division_axis = 0;
-    root->father_ptr = nullptr;
-    root->left_son_ptr = nullptr;
-    root->right_son_ptr = nullptr;
-    root->TreeSize = 0;
-    root->invalid_point_num = 0;
-    root->down_del_num = 0;
-    root->point_deleted = false;
-    root->tree_deleted = false;
-    root->need_push_down_to_left = false;
-    root->need_push_down_to_right = false;
-    root->point_downsample_deleted = false;
-    root->working_flag = false;
+    root->division_axis = 0;                //初始化根节点的分割轴
+    root->father_ptr = nullptr;             //初始化根节点的父节点指针
+    root->left_son_ptr = nullptr;           //初始化根节点的左子指针
+    root->right_son_ptr = nullptr;          //初始化根节点的右子指针
+    root->TreeSize = 0;                     //初始化根节点的子树大小
+    root->invalid_point_num = 0;            //初始化根节点的无效点数
+    root->down_del_num = 0;                 //初始化根节点的下采样删除数
+    root->point_deleted = false;            //初始化根节点的点是否被删除
+    root->tree_deleted = false;             //初始化根节点的树是否被删除
+    root->need_push_down_to_left = false;   //初始化根节点的是否需要向左子树下采样
+    root->need_push_down_to_right = false;  //初始化根节点的是否需要向右子树下采样
+    root->point_downsample_deleted = false; //初始化根节点的点是否被下采样删除
+    root->working_flag = false;             //初始化根节点的工作标志
     // 初始化互斥锁 相当于 pthread_mutex_t root->push_down_mutex_lock = PTHREAD_MUTEX_INITIALIZER
     pthread_mutex_init(&(root->push_down_mutex_lock), NULL);
 }
@@ -1811,9 +1811,9 @@ void KD_TREE::delete_tree_nodes(KD_TREE_NODE **root)
 {
     if (*root == nullptr)
         return;
-    Push_Down(*root);
-    delete_tree_nodes(&(*root)->left_son_ptr);
-    delete_tree_nodes(&(*root)->right_son_ptr);
+    Push_Down(*root);                           // 先把该节点的子节点全部压下来
+    delete_tree_nodes(&(*root)->left_son_ptr);  // 删除左子树
+    delete_tree_nodes(&(*root)->right_son_ptr); // 删除右子树
 
     delete *root;
     *root = nullptr;
