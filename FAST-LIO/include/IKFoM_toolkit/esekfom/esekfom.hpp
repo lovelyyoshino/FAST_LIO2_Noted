@@ -120,7 +120,7 @@ namespace esekfom
 		typedef SparseMatrix<scalar_type> spMt;
 		typedef Matrix<scalar_type, n, 1> vectorized_state;
 		typedef Matrix<scalar_type, m, 1> flatted_state;
-		typedef flatted_state processModel(state &, const input &);
+		typedef flatted_state processModel(state &, const input &); //声明一个函数指针
 		typedef Eigen::Matrix<scalar_type, m, n> processMatrix1(state &, const input &);
 		typedef Eigen::Matrix<scalar_type, m, process_noise_dof> processMatrix2(state &, const input &);
 		typedef Eigen::Matrix<scalar_type, process_noise_dof, process_noise_dof> processnoisecovariance;
@@ -234,9 +234,9 @@ namespace esekfom
 			x_.build_vect_state();
 		}
 
-		// receive system-specific models and their differentions
-		// for measurement as an Eigen matrix whose dimension is changing.
-		// calculate  measurement (z), estimate measurement (h), partial differention matrices (h_x, h_v) and the noise covariance (R) at the same time, by only one function (h_dyn_share_in).
+		//接收系统特定的模型及其差异
+		//作为特征矩阵的测量，其维数是变化的。
+		//通过一个函数(h_dyn_share_in)完成了测量(z)，估计测量(h)，偏微分矩阵(h_x, h_v)和噪声协方差(R)的同时计算。
 		void init_dyn_share(processModel f_in, processMatrix1 f_x_in, processMatrix2 f_w_in, measurementModel_dyn_share h_dyn_share_in, int maximum_iteration, scalar_type limit_vector[n])
 		{
 			f = f_in;

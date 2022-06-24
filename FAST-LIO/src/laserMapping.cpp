@@ -723,31 +723,32 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
                                                                                                                                 : true;
         }
 
-        if (!point_selected_surf[i])
+        if (!point_selected_surf[i]) //如果该点不是有效点
             continue;
 
         VF(4)
-        pabcd;
-        point_selected_surf[i] = false;
-        //拟合平面方程ax+by+cz+d=0并求解点到平面距离
-        if (esti_plane(pabcd, points_near, 0.1f)) //找平面点的阈值
-        {
-            float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3);
-            float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
+        pabcd;                          //平面点信息
+        point_selected_surf[i] = false; //将该点设置为无效点，用来计算是否为平面点
 
-            if (s > 0.9)
+        //拟合平面方程ax+by+cz+d=0并求解点到平面距离
+        if (esti_plane(pabcd, points_near, 0.1f)) //找平面点法向量寻找，common_lib.h中的函数
+        {
+            float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3); //计算点到平面的距离
+            float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());                                                   //计算残差
+
+            if (s > 0.9) //如果残差大于阈值，则认为该点是有效点
             {
-                point_selected_surf[i] = true;
-                normvec->points[i].x = pabcd(0);
+                point_selected_surf[i] = true;   //再次回复为有效点
+                normvec->points[i].x = pabcd(0); //将法向量存储至normvec
                 normvec->points[i].y = pabcd(1);
                 normvec->points[i].z = pabcd(2);
-                normvec->points[i].intensity = pd2;
-                res_last[i] = abs(pd2);
+                normvec->points[i].intensity = pd2; //将点到平面的距离存储至normvec的intensit中
+                res_last[i] = abs(pd2);             //将残差存储至res_last
             }
         }
     }
 
-    effct_feat_num = 0;
+    effct_feat_num = 0; //有效特征点数
 
     for (int i = 0; i < feats_down_size; i++)
     {
@@ -755,21 +756,21 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         if (point_selected_surf[i])
         {
             // body点存到laserCloudOri中
-            laserCloudOri->points[effct_feat_num] = feats_down_body->points[i];
+            laserCloudOri->points[effct_feat_num] = feats_down_body->points[i]; //将降采样后的每个特征点存储至laserCloudOri
             //拟合平面点存到corr_normvect中
             corr_normvect->points[effct_feat_num] = normvec->points[i];
-            total_residual += res_last[i];
-            effct_feat_num++;
+            total_residual += res_last[i]; //计算总残差
+            effct_feat_num++;              //有效特征点数加1
         }
     }
 
-    res_mean_last = total_residual / effct_feat_num;
-    match_time += omp_get_wtime() - match_start; //返回从某个特殊点所经过的时间
-    double solve_start_ = omp_get_wtime();
+    res_mean_last = total_residual / effct_feat_num; //计算残差平均值
+    match_time += omp_get_wtime() - match_start;     //返回从匹配开始时候所经过的时间
+    double solve_start_ = omp_get_wtime();           //下面是solve求解的时间
 
     // 测量雅可比矩阵H和测量向量的计算 H=J*P*J'
-    ekfom_data.h_x = MatrixXd::Zero(effct_feat_num, 12); // 23
-    ekfom_data.h.resize(effct_feat_num);
+    ekfom_data.h_x = MatrixXd::Zero(effct_feat_num, 12); //测量雅可比矩阵H，论文中的23
+    ekfom_data.h.resize(effct_feat_num);                 //测量向量h
 
     //求观测值与误差的雅克比矩阵，如论文式14以及式12、13
     for (int i = 0; i < effct_feat_num; i++)
@@ -777,28 +778,28 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         // 拿到的有效点的坐标
         const PointType &laser_p = laserCloudOri->points[i];
         V3D point_this_be(laser_p.x, laser_p.y, laser_p.z);
-        M3D point_be_crossmat;
+        M3D point_be_crossmat; //计算点的叉矩阵
         // 从点值转换到叉乘矩阵
         point_be_crossmat << SKEW_SYM_MATRX(point_this_be);
         // 转换到IMU坐标系下
-        V3D point_this = s.offset_R_L_I * point_this_be + s.offset_T_L_I; // offset_R_L_I，offset_T_L_I为IMU的旋转姿态和位移
+        V3D point_this = s.offset_R_L_I * point_this_be + s.offset_T_L_I; // offset_R_L_I，offset_T_L_I为IMU的旋转姿态和位移,此时转到了IMU坐标系下
         M3D point_crossmat;
-        point_crossmat << SKEW_SYM_MATRX(point_this);
+        point_crossmat << SKEW_SYM_MATRX(point_this); //计算imu中点的叉矩阵
 
-        // 得到最近的曲面/角的法向量
+        // 得到对应的曲面/角的法向量
         const PointType &norm_p = corr_normvect->points[i];
         V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
 
         // 计算测量雅可比矩阵H
-        V3D C(s.rot.conjugate() * norm_vec);
-        V3D A(point_crossmat * C);
-        V3D B(point_be_crossmat * s.offset_R_L_I.conjugate() * C); // s.rot.conjugate()*norm_vec);
+        V3D C(s.rot.conjugate() * norm_vec);                       //旋转矩阵的转置与法向量相乘得到C
+        V3D A(point_crossmat * C);                                 //对imu的差距真与C相乘得到A
+        V3D B(point_be_crossmat * s.offset_R_L_I.conjugate() * C); //对点的差距真与C相乘得到B
         ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
 
         // 测量:到最近表面/角落的距离
         ekfom_data.h(i) = -norm_p.intensity; //点到面的距离
     }
-    solve_time += omp_get_wtime() - solve_start_;
+    solve_time += omp_get_wtime() - solve_start_; //返回从solve开始时候所经过的时间
 }
 // FAST_LIO2主函数
 int main(int argc, char **argv)
