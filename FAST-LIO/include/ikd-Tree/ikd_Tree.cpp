@@ -724,7 +724,7 @@ void KD_TREE::acquire_removed_points(PointVector &removed_points)
     }
     Points_deleted.clear();
     Multithread_Points_deleted.clear();
-    pthread_mutex_unlock(&points_deleted_rebuild_mutex_lock);
+    pthread_mutex_unlock(&points_deleted_rebuild_mutex_lock); // 解锁
     return;
 }
 

@@ -66,7 +66,7 @@
 #define PUBFRAME_PERIOD (20)
 
 /*** Time Log Variables ***/
-// kdtree_build_time为kdtree建立时间，kdtree_search_time为kdtree搜索时间，kdtree_delete_time为kdtree删除时间;
+// kdtree_incremental_time为kdtree建立时间，kdtree_search_time为kdtree搜索时间，kdtree_delete_time为kdtree删除时间;
 double kdtree_incremental_time = 0.0, kdtree_search_time = 0.0, kdtree_delete_time = 0.0;
 // T1为雷达初始时间戳，s_plot为整个流程耗时，s_plot2特征点数量,s_plot3为kdtree增量时间，s_plot4为kdtree搜索耗时，s_plot5为kdtree删除点数量
 //，s_plot6为kdtree删除耗时，s_plot7为kdtree初始大小，s_plot8为kdtree结束大小,s_plot9为平均消耗时间，s_plot10为添加点数量，s_plot11为点云预处理的总时间
@@ -244,12 +244,12 @@ void points_cache_collect()
     PointVector points_history;
     ikdtree.acquire_removed_points(points_history); //返回被剔除的点
     for (int i = 0; i < points_history.size(); i++)
-        _featsArray->push_back(points_history[i]);
+        _featsArray->push_back(points_history[i]); //存入到缓存中，后面没有用到该数据
 }
 
-// 动态调整地图区域，防止地图过大而内存溢出，类似LOAM中提取局部地图的方法
-BoxPointType LocalMap_Points; // ikd-tree中,局部地图的包围盒角点
-bool Localmap_Initialized = false;
+// 在拿到eskf前馈结果后，动态调整地图区域，防止地图过大而内存溢出，类似LOAM中提取局部地图的方法
+BoxPointType LocalMap_Points;      // ikd-tree中,局部地图的包围盒角点
+bool Localmap_Initialized = false; // 局部地图是否初始化
 void lasermap_fov_segment()
 {
     cub_needrm.clear(); // 清空需要移除的区域
@@ -321,9 +321,9 @@ void lasermap_fov_segment()
 // 除了AVIA类型之外的雷达点云回调函数，将数据引入到buffer当中
 void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
-    mtx_buffer.lock();
+    mtx_buffer.lock(); //加锁
     scan_count++;
-    double preprocess_start_time = omp_get_wtime();
+    double preprocess_start_time = omp_get_wtime(); //记录时间
     if (msg->header.stamp.toSec() < last_timestamp_lidar)
     {
         ROS_ERROR("lidar loop back, clear buffer");
@@ -331,17 +331,17 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     }
 
     PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
-    p_pre->process(msg, ptr); //点云预处理
-    lidar_buffer.push_back(ptr);
-    time_buffer.push_back(msg->header.stamp.toSec());
-    last_timestamp_lidar = msg->header.stamp.toSec();
+    p_pre->process(msg, ptr);                                       //点云预处理
+    lidar_buffer.push_back(ptr);                                    //将点云放入缓冲区
+    time_buffer.push_back(msg->header.stamp.toSec());               //将时间放入缓冲区
+    last_timestamp_lidar = msg->header.stamp.toSec();               //记录最后一个时间
     s_plot11[scan_count] = omp_get_wtime() - preprocess_start_time; //预处理时间
     mtx_buffer.unlock();
     sig_buffer.notify_all(); // 唤醒所有线程
 }
 
-double timediff_lidar_wrt_imu = 0.0;
-bool timediff_set_flg = false; // 时间同步flag，false表示未进行时间同步，true表示已经进行过时间同步
+double timediff_lidar_wrt_imu = 0.0; //雷达时间与imu时间差
+bool timediff_set_flg = false;       // 时间同步flag，false表示未进行时间同步，true表示已经进行过时间同步
 
 // 订阅器sub_pcl的回调函数：接收Livox激光雷达的点云数据，对点云数据进行预处理（特征提取、降采样、滤波），并将处理后的数据保存到激光雷达数据队列中
 void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg)
@@ -367,7 +367,7 @@ void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg)
     // time_sync_en为true时，当imu时间戳和雷达时间戳相差大于1s时，进行时间同步
     if (time_sync_en && !timediff_set_flg && abs(last_timestamp_lidar - last_timestamp_imu) > 1 && !imu_buffer.empty())
     {
-        timediff_set_flg = true;
+        timediff_set_flg = true; // 标记已经进行时间同步
         timediff_lidar_wrt_imu = last_timestamp_lidar + 0.1 - last_timestamp_imu;
         printf("Self sync IMU and LiDAR, time diff is %.10lf \n", timediff_lidar_wrt_imu);
     }
@@ -392,10 +392,10 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
     if (abs(timediff_lidar_wrt_imu) > 0.1 && time_sync_en) //时间同步校准
     {
         msg->header.stamp =
-            ros::Time().fromSec(timediff_lidar_wrt_imu + msg_in->header.stamp.toSec());
+            ros::Time().fromSec(timediff_lidar_wrt_imu + msg_in->header.stamp.toSec()); //将IMU时间戳对齐到激光雷达时间戳
     }
 
-    double timestamp = msg->header.stamp.toSec();
+    double timestamp = msg->header.stamp.toSec(); // IMU时间戳
 
     mtx_buffer.lock();
     // 如果当前IMU的时间戳小于上一个时刻IMU的时间戳，则IMU数据有误，将IMU数据缓存队列清空
@@ -411,14 +411,13 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
     mtx_buffer.unlock();     //解锁
     sig_buffer.notify_all(); // 唤醒阻塞的线程，当持有锁的线程释放锁时，这些线程中的一个会获得锁。而其余的会接着尝试获得锁
 }
-//处理buffer中的数据，将激光雷达点云数据和IMU数据从缓存队列中取出，进行时间对齐，并保存到meas中
+//处理buffer中的数据，将两帧激光雷达点云数据时间内的IMU数据从缓存队列中取出，进行时间对齐，并保存到meas中
 bool sync_packages(MeasureGroup &meas)
 {
-    if (lidar_buffer.empty() || imu_buffer.empty())
+    if (lidar_buffer.empty() || imu_buffer.empty()) //如果缓存队列中没有数据，则返回false
     {
         return false;
     }
-
     /*** push a lidar scan ***/
     //如果还没有把雷达数据放到meas中的话，就执行一下操作
     if (!lidar_pushed)
@@ -438,7 +437,7 @@ bool sync_packages(MeasureGroup &meas)
         lidar_pushed = true;
     }
 
-    // 最新的IMU时间戳(也就是队尾的)不能早于雷达的end时间戳
+    // 最新的IMU时间戳(也就是队尾的)不能早于雷达的end时间戳，因为last_timestamp_imu比较时是加了0.1的，所以要比较大于雷达的end时间戳
     if (last_timestamp_imu < lidar_end_time)
     {
         return false;
@@ -448,28 +447,28 @@ bool sync_packages(MeasureGroup &meas)
     double imu_time = imu_buffer.front()->header.stamp.toSec();
     meas.imu.clear();
     // 拿出lidar_beg_time到lidar_end_time之间的所有IMU数据
-    while ((!imu_buffer.empty()) && (imu_time < lidar_end_time))
+    while ((!imu_buffer.empty()) && (imu_time < lidar_end_time)) //如果imu缓存队列中的数据时间戳小于雷达结束时间戳，则将该数据放到meas中,代表了这一帧中的imu数据
     {
-        imu_time = imu_buffer.front()->header.stamp.toSec();
+        imu_time = imu_buffer.front()->header.stamp.toSec(); //获取imu数据的时间戳
         if (imu_time > lidar_end_time)
             break;
-        meas.imu.push_back(imu_buffer.front());
+        meas.imu.push_back(imu_buffer.front()); //将imu数据放到meas中
         imu_buffer.pop_front();
     }
 
-    lidar_buffer.pop_front();
-    time_buffer.pop_front();
-    lidar_pushed = false;
+    lidar_buffer.pop_front(); //将lidar数据弹出
+    time_buffer.pop_front();  //将时间戳弹出
+    lidar_pushed = false;     //将lidar_pushed置为false，代表lidar数据已经被放到meas中了
     return true;
 }
 
 int process_increments = 0;
-void map_incremental()
+void map_incremental() //地图的增量更新，主要完成对ikd-tree的地图建立
 {
-    PointVector PointToAdd;              //需要加入到ikd-tree中的点云
-    PointVector PointNoNeedDownsample;   //加入ikd-tree时，不需要降采样的点云
-    PointToAdd.reserve(feats_down_size); //构建的地图点
-    PointNoNeedDownsample.reserve(feats_down_size);
+    PointVector PointToAdd;                         //需要加入到ikd-tree中的点云
+    PointVector PointNoNeedDownsample;              //加入ikd-tree时，不需要降采样的点云
+    PointToAdd.reserve(feats_down_size);            //构建的地图点
+    PointNoNeedDownsample.reserve(feats_down_size); //构建的地图点，不需要降采样的点云
     //根据点与所在包围盒中心点的距离，分类是否需要降采样
     for (int i = 0; i < feats_down_size; i++)
     {
@@ -478,10 +477,10 @@ void map_incremental()
         // 判断是否有关键点需要加到地图中
         if (!Nearest_Points[i].empty() && flg_EKF_inited)
         {
-            const PointVector &points_near = Nearest_Points[i];
-            bool need_add = true;
-            BoxPointType Box_of_Point;
-            PointType downsample_result, mid_point;
+            const PointVector &points_near = Nearest_Points[i]; //获取附近的点云
+            bool need_add = true;                               //是否需要加入到地图中
+            BoxPointType Box_of_Point;                          //点云所在的包围盒
+            PointType downsample_result, mid_point;             //降采样结果，中点
             // filter_size_map_min是地图体素降采样的栅格边长，设为0.1m
             // mid_point即为该特征点所属的栅格的中心点坐标
             mid_point.x = floor(feats_down_world->points[i].x / filter_size_map_min) * filter_size_map_min + 0.5 * filter_size_map_min;
@@ -499,9 +498,9 @@ void map_incremental()
             //判断当前点的 NUM_MATCH_POINTS 个邻近点与包围盒中心的范围
             for (int readd_i = 0; readd_i < NUM_MATCH_POINTS; readd_i++)
             {
-                if (points_near.size() < NUM_MATCH_POINTS)
+                if (points_near.size() < NUM_MATCH_POINTS) //若邻近点数小于NUM_MATCH_POINTS，则直接跳出，添加到PointToAdd中
                     break;
-                // 如果邻近点到中心的距离 小于 当前点到中心的距离，则不需要添加当前点
+                // 如果存在邻近点到中心的距离小于当前点到中心的距离，则不需要添加当前点
                 if (calc_dist(points_near[readd_i], mid_point) < dist)
                 {
                     need_add = false;
@@ -509,31 +508,31 @@ void map_incremental()
                 }
             }
             if (need_add)
-                PointToAdd.push_back(feats_down_world->points[i]);
+                PointToAdd.push_back(feats_down_world->points[i]); //加入到PointToAdd中
         }
         else
         {
-            PointToAdd.push_back(feats_down_world->points[i]);
+            PointToAdd.push_back(feats_down_world->points[i]); //如果周围没有点或者没有初始化EKF，则加入到PointToAdd中
         }
     }
 
-    double st_time = omp_get_wtime();
-    add_point_size = ikdtree.Add_Points(PointToAdd, true); //加入点时需要降采样
-    ikdtree.Add_Points(PointNoNeedDownsample, false);      //加入点时不需要降采样
-    add_point_size = PointToAdd.size() + PointNoNeedDownsample.size();
-    kdtree_incremental_time = omp_get_wtime() - st_time;
+    double st_time = omp_get_wtime();                                  //记录起始时间
+    add_point_size = ikdtree.Add_Points(PointToAdd, true);             //加入点时需要降采样
+    ikdtree.Add_Points(PointNoNeedDownsample, false);                  //加入点时不需要降采样
+    add_point_size = PointToAdd.size() + PointNoNeedDownsample.size(); //计算总共加入ikd-tree的点的数量
+    kdtree_incremental_time = omp_get_wtime() - st_time;               // kdtree建立时间更新
 }
 
-PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI(500000, 1));
-PointCloudXYZI::Ptr pcl_wait_save(new PointCloudXYZI());
+PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI(500000, 1)); //创建一个点云用于存储等待发布的点云
+PointCloudXYZI::Ptr pcl_wait_save(new PointCloudXYZI());         //创建一个点云用于存储等待保存的点云
 void publish_frame_world(const ros::Publisher &pubLaserCloudFull)
 {
-    if (scan_pub_en)
+    if (scan_pub_en) // 设置是否发布激光雷达数据，是否发布稠密数据，是否发布激光雷达数据的身体数据
     {
         PointCloudXYZI::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort : feats_down_body); //判断是否需要降采样
-        int size = laserCloudFullRes->points.size();
+        int size = laserCloudFullRes->points.size();                                             //获取待转换点云的大小
         PointCloudXYZI::Ptr laserCloudWorld(
-            new PointCloudXYZI(size, 1));
+            new PointCloudXYZI(size, 1)); //创建一个点云用于存储转换到世界坐标系的点云
 
         for (int i = 0; i < size; i++)
         {
@@ -561,21 +560,21 @@ void publish_frame_world(const ros::Publisher &pubLaserCloudFull)
         for (int i = 0; i < size; i++)
         {
             RGBpointBodyToWorld(&feats_undistort->points[i],
-                                &laserCloudWorld->points[i]);
+                                &laserCloudWorld->points[i]); //转换到世界坐标系
         }
-        *pcl_wait_save += *laserCloudWorld;
+        *pcl_wait_save += *laserCloudWorld; //把结果压入到pcd中
     }
 }
 //把去畸变的雷达系下的点云转到IMU系
 void publish_frame_body(const ros::Publisher &pubLaserCloudFull_body)
 {
     int size = feats_undistort->points.size();
-    PointCloudXYZI::Ptr laserCloudIMUBody(new PointCloudXYZI(size, 1));
+    PointCloudXYZI::Ptr laserCloudIMUBody(new PointCloudXYZI(size, 1)); //创建一个点云用于存储转换到IMU系的点云
 
     for (int i = 0; i < size; i++)
     {
         RGBpointBodyLidarToIMU(&feats_undistort->points[i],
-                               &laserCloudIMUBody->points[i]);
+                               &laserCloudIMUBody->points[i]); //转换到IMU坐标系
     }
 
     sensor_msgs::PointCloud2 laserCloudmsg;
@@ -589,7 +588,7 @@ void publish_frame_body(const ros::Publisher &pubLaserCloudFull_body)
 void publish_frame_lidar(const ros::Publisher &pubLaserCloudFull_lidar)
 {
     sensor_msgs::PointCloud2 laserCloudmsg;
-    pcl::toROSMsg(*feats_undistort, laserCloudmsg);
+    pcl::toROSMsg(*feats_undistort, laserCloudmsg); //转换到ROS消息格式,并直接发布信息
     laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
     laserCloudmsg.header.frame_id = "lidar";
     pubLaserCloudFull_lidar.publish(laserCloudmsg);
@@ -599,7 +598,7 @@ void publish_frame_lidar(const ros::Publisher &pubLaserCloudFull_lidar)
 void publish_effect_world(const ros::Publisher &pubLaserCloudEffect)
 {
     PointCloudXYZI::Ptr laserCloudWorld(
-        new PointCloudXYZI(effct_feat_num, 1));
+        new PointCloudXYZI(effct_feat_num, 1)); //创建一个点云用于存储转换到世界坐标系的点云,从h_share_model获得
     for (int i = 0; i < effct_feat_num; i++)
     {
         RGBpointBodyToWorld(&laserCloudOri->points[i],
@@ -611,7 +610,7 @@ void publish_effect_world(const ros::Publisher &pubLaserCloudEffect)
     laserCloudFullRes3.header.frame_id = "camera_init";
     pubLaserCloudEffect.publish(laserCloudFullRes3);
 }
-// 发布地图
+// 发布ikd-tree地图
 void publish_map(const ros::Publisher &pubLaserCloudMap)
 {
     sensor_msgs::PointCloud2 laserCloudMap;
@@ -624,10 +623,10 @@ void publish_map(const ros::Publisher &pubLaserCloudMap)
 template <typename T>
 void set_posestamp(T &out)
 {
-    out.pose.position.x = state_point.pos(0);
+    out.pose.position.x = state_point.pos(0); //将eskf求得的位置传入
     out.pose.position.y = state_point.pos(1);
     out.pose.position.z = state_point.pos(2);
-    out.pose.orientation.x = geoQuat.x;
+    out.pose.orientation.x = geoQuat.x; //将eskf求得的姿态传入
     out.pose.orientation.y = geoQuat.y;
     out.pose.orientation.z = geoQuat.z;
     out.pose.orientation.w = geoQuat.w;
@@ -685,12 +684,12 @@ void publish_path(const ros::Publisher pubPath)
 //计算残差信息
 void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data)
 {
-    double match_start = omp_get_wtime();
-    laserCloudOri->clear();
-    corr_normvect->clear();
+    double match_start = omp_get_wtime(); //计算匹配的开始时间
+    laserCloudOri->clear();               //将body系的有效点云存储清空
+    corr_normvect->clear();               //将对应的法向量清空
     total_residual = 0.0;
 
-/** closest surface search and residual computation **/
+/** 最接近曲面搜索和残差计算  **/
 #ifdef MP_EN
     omp_set_num_threads(MP_PROC_NUM);
 #pragma omp parallel for
@@ -698,13 +697,13 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     //对降采样后的每个特征点进行残差计算
     for (int i = 0; i < feats_down_size; i++)
     {
-        PointType &point_body = feats_down_body->points[i];
-        PointType &point_world = feats_down_world->points[i];
+        PointType &point_body = feats_down_body->points[i];   //获取降采样后的每个特征点
+        PointType &point_world = feats_down_world->points[i]; //获取降采样后的每个特征点的世界坐标
 
         /* transform to world frame */
         //将点转换至世界坐标系下
         V3D p_body(point_body.x, point_body.y, point_body.z);
-        V3D p_global(s.rot * (s.offset_R_L_I * p_body + s.offset_T_L_I) + s.pos);
+        V3D p_global(s.rot * (s.offset_R_L_I * p_body + s.offset_T_L_I) + s.pos); //将点转换至世界坐标系下,从而来计算残差
         point_world.x = p_global(0);
         point_world.y = p_global(1);
         point_world.z = p_global(2);
@@ -714,11 +713,12 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
 
         auto &points_near = Nearest_Points[i];
 
-        if (ekfom_data.converge)
+        if (ekfom_data.converge) //如果收敛了
         {
             /** Find the closest surfaces in the map **/
             //在已构造的地图上查找特征点的最近邻
             ikdtree.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near, pointSearchSqDis);
+            //如果最近邻的点数小于NUM_MATCH_POINTS或者最近邻的点到特征点的距离大于5m，则认为该点不是有效点
             point_selected_surf[i] = points_near.size() < NUM_MATCH_POINTS ? false : pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5 ? false
                                                                                                                                 : true;
         }
@@ -980,17 +980,17 @@ int main(int argc, char **argv)
             //下面式子的意义是W^p_L = W^p_I + W^R_I * I^t_L
             pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
 
-            if (feats_undistort->empty() || (feats_undistort == NULL))
+            if (feats_undistort->empty() || (feats_undistort == NULL)) //如果点云数据为空，则代表了激光雷达没有完成去畸变，此时还不能初始化成功
             {
-                first_lidar_time = Measures.lidar_beg_time;
-                p_imu->first_lidar_time = first_lidar_time;
+                first_lidar_time = Measures.lidar_beg_time; //记录第一次扫描的时间
+                p_imu->first_lidar_time = first_lidar_time; //将第一帧的时间传给imu作为当前帧的第一个点云时间
                 // cout<<"FAST-LIO not ready"<<endl;
                 continue;
             }
 
-            flg_EKF_inited = (Measures.lidar_beg_time - first_lidar_time) < INIT_TIME ? false : true;
+            flg_EKF_inited = (Measures.lidar_beg_time - first_lidar_time) < INIT_TIME ? false : true; //判断是否初始化完成，需要满足第一次扫描的时间和第一个点云时间的差值大于INIT_TIME
             /*** Segment the map in lidar FOV ***/
-            // 动态调整局部地图
+            // 动态调整局部地图,在拿到eskf前馈结果后
             lasermap_fov_segment();
 
             /*** downsample the feature points in a scan ***/
