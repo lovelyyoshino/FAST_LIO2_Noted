@@ -66,52 +66,63 @@
 #define PUBFRAME_PERIOD (20)
 
 /*** Time Log Variables ***/
+// kdtree_build_time为kdtree建立时间，kdtree_search_time为kdtree搜索时间，kdtree_delete_time为kdtree删除时间;
 double kdtree_incremental_time = 0.0, kdtree_search_time = 0.0, kdtree_delete_time = 0.0;
+// T1为雷达初始时间戳，s_plot为整个流程耗时，s_plot2特征点数量,s_plot3为kdtree增量时间，s_plot4为kdtree搜索耗时，s_plot5为kdtree删除点数量
+//，s_plot6为kdtree删除耗时，s_plot7为kdtree初始大小，s_plot8为kdtree结束大小,s_plot9为平均消耗时间，s_plot10为添加点数量，s_plot11为点云预处理的总时间
 double T1[MAXN], s_plot[MAXN], s_plot2[MAXN], s_plot3[MAXN], s_plot4[MAXN], s_plot5[MAXN], s_plot6[MAXN], s_plot7[MAXN], s_plot8[MAXN], s_plot9[MAXN], s_plot10[MAXN], s_plot11[MAXN];
+
+// 定义全局变量，用于记录时间,match_time为匹配时间，solve_time为求解时间，solve_const_H_time为求解H矩阵时间
 double match_time = 0, solve_time = 0, solve_const_H_time = 0;
+// kdtree_size_st为ikd-tree获得的节点数，kdtree_size_end为ikd-tree结束时的节点数，add_point_size为添加点的数量，kdtree_delete_counter为删除点的数量
 int kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0, kdtree_delete_counter = 0;
+// runtime_pos_log运行时的log是否开启，pcd_save_en是否保存pcd文件，time_sync_en是否同步时间
 bool runtime_pos_log = false, pcd_save_en = false, time_sync_en = false;
 /**************************/
 
-float res_last[100000] = {0.0}; //残差，点到面距离平方和
-float DET_RANGE = 300.0f;
-const float MOV_THRESHOLD = 1.5f;
+float res_last[100000] = {0.0};   //残差，点到面距离平方和
+float DET_RANGE = 300.0f;         //设置的当前雷达系中心到各个地图边缘的距离
+const float MOV_THRESHOLD = 1.5f; //设置的当前雷达系中心到各个地图边缘的权重
 
 mutex mtx_buffer;              // 互斥锁
 condition_variable sig_buffer; // 条件变量
 
-string root_dir = ROOT_DIR;
-string map_file_path, lid_topic, imu_topic;
+string root_dir = ROOT_DIR;                 //设置根目录
+string map_file_path, lid_topic, imu_topic; //设置地图文件路径，雷达topic，imu topic
 
-double res_mean_last = 0.05, total_residual = 0.0;
-double last_timestamp_lidar = 0, last_timestamp_imu = -1.0;
-double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
-double filter_size_corner_min = 0, filter_size_surf_min = 0, filter_size_map_min = 0, fov_deg = 0;
+double res_mean_last = 0.05, total_residual = 0.0;                                                 //设置残差平均值，残差总和
+double last_timestamp_lidar = 0, last_timestamp_imu = -1.0;                                        //设置雷达时间戳，imu时间戳
+double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;                       //设置imu的角速度协方差，加速度协方差，角速度协方差偏置，加速度协方差偏置
+double filter_size_corner_min = 0, filter_size_surf_min = 0, filter_size_map_min = 0, fov_deg = 0; //设置滤波器的最小尺寸，地图的最小尺寸，视野角度
+
+//设置立方体长度，视野一半的角度，视野总角度，总距离，雷达结束时间，雷达初始时间
 double cube_len = 0, HALF_FOV_COS = 0, FOV_DEG = 0, total_distance = 0, lidar_end_time = 0, first_lidar_time = 0.0;
-// scan_count：接收到的激光雷达Msg的总数，publish_count：接收到的IMU的Msg的总数
+//设置有效特征点数，时间log计数器, scan_count：接收到的激光雷达Msg的总数，publish_count：接收到的IMU的Msg的总数
 int effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
+//设置迭代次数，下采样的点数，最大迭代次数，有效点数
 int iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudValidNum = 0;
 bool point_selected_surf[100000] = {0}; // 是否为平面特征点
-// lidar_pushed：用于判断激光雷达数据是否从缓存队列中拿到meas中的数据
+// lidar_pushed：用于判断激光雷达数据是否从缓存队列中拿到meas中的数据, flg_EKF_inited用于判断EKF是否初始化完成
 bool lidar_pushed, flg_reset, flg_exit = false, flg_EKF_inited;
+//设置是否发布激光雷达数据，是否发布稠密数据，是否发布激光雷达数据的身体数据
 bool scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
 
-vector<vector<int>> pointSearchInd_surf;
-vector<BoxPointType> cub_needrm; // ikd-tree中，地图需要移除的包围盒序列
-vector<PointVector> Nearest_Points;
-vector<double> extrinT(3, 0.0);
-vector<double> extrinR(9, 0.0);
+vector<vector<int>> pointSearchInd_surf;      //每个点的索引,暂时没用到
+vector<BoxPointType> cub_needrm;              // ikd-tree中，地图需要移除的包围盒序列
+vector<PointVector> Nearest_Points;           //每个点的最近点序列
+vector<double> extrinT(3, 0.0);               //雷达相对于IMU的外参T
+vector<double> extrinR(9, 0.0);               //雷达相对于IMU的外参R
 deque<double> time_buffer;                    // 激光雷达数据时间戳缓存队列
 deque<PointCloudXYZI::Ptr> lidar_buffer;      //记录特征提取或间隔采样后的lidar（特征）数据
 deque<sensor_msgs::Imu::ConstPtr> imu_buffer; // IMU数据缓存队列
 
 //一些点云变量
-PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
-PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
-PointCloudXYZI::Ptr feats_down_body(new PointCloudXYZI());  //畸变纠正后降采样的单帧点云，lidar系
-PointCloudXYZI::Ptr feats_down_world(new PointCloudXYZI()); //畸变纠正后降采样的单帧点云，w系
-PointCloudXYZI::Ptr normvec(new PointCloudXYZI(100000, 1)); //特征点在地图中对应点的，局部平面参数,w系
-PointCloudXYZI::Ptr laserCloudOri(new PointCloudXYZI(100000, 1));
+PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());           //提取地图中的特征点，IKD-tree获得
+PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());        //去畸变的特征
+PointCloudXYZI::Ptr feats_down_body(new PointCloudXYZI());        //畸变纠正后降采样的单帧点云，lidar系
+PointCloudXYZI::Ptr feats_down_world(new PointCloudXYZI());       //畸变纠正后降采样的单帧点云，w系
+PointCloudXYZI::Ptr normvec(new PointCloudXYZI(100000, 1));       //特征点在地图中对应点的，局部平面参数,w系
+PointCloudXYZI::Ptr laserCloudOri(new PointCloudXYZI(100000, 1)); // laserCloudOri是畸变纠正后降采样的单帧点云，body系
 PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(100000, 1)); //对应点法相量
 PointCloudXYZI::Ptr _featsArray;                                  // ikd-tree中，map需要移除的点云序列
 
@@ -119,33 +130,33 @@ PointCloudXYZI::Ptr _featsArray;                                  // ikd-tree中
 pcl::VoxelGrid<PointType> downSizeFilterSurf; //单帧内降采样使用voxel grid
 pcl::VoxelGrid<PointType> downSizeFilterMap;  //未使用
 
-KD_TREE ikdtree;
+KD_TREE ikdtree; // ikd-tree类
 
-V3F XAxisPoint_body(LIDAR_SP_LEN, 0.0, 0.0);
-V3F XAxisPoint_world(LIDAR_SP_LEN, 0.0, 0.0);
-V3D euler_cur;
-V3D position_last(Zero3d);
-V3D Lidar_T_wrt_IMU(Zero3d); // T lidar to imu (imu = r * lidar + t)
-M3D Lidar_R_wrt_IMU(Eye3d);  // R lidar to imu (imu = r * lidar + t)
+V3F XAxisPoint_body(LIDAR_SP_LEN, 0.0, 0.0);  //雷达相对于body系的X轴方向的点
+V3F XAxisPoint_world(LIDAR_SP_LEN, 0.0, 0.0); //雷达相对于world系的X轴方向的点
+V3D euler_cur;                                //当前的欧拉角
+V3D position_last(Zero3d);                    //上一帧的位置
+V3D Lidar_T_wrt_IMU(Zero3d);                  // T lidar to imu (imu = r * lidar + t)
+M3D Lidar_R_wrt_IMU(Eye3d);                   // R lidar to imu (imu = r * lidar + t)
 
 /*** EKF inputs and output ***/
 // ESEKF操作
 MeasureGroup Measures;
 esekfom::esekf<state_ikfom, 12, input_ikfom> kf; // 状态，噪声维度，输入
-state_ikfom state_point;
-vect3 pos_lid; // world系下lidar坐标
+state_ikfom state_point;                         // 状态
+vect3 pos_lid;                                   // world系下lidar坐标
 
 //输出的路径参数
-nav_msgs::Path path;              //包含了一系列位姿
-nav_msgs::Odometry odomAftMapped; //只包含了一个位姿
-geometry_msgs::Quaternion geoQuat;
-geometry_msgs::PoseStamped msg_body_pose;
+nav_msgs::Path path;                      //包含了一系列位姿
+nav_msgs::Odometry odomAftMapped;         //只包含了一个位姿
+geometry_msgs::Quaternion geoQuat;        //四元数
+geometry_msgs::PoseStamped msg_body_pose; //位姿
 
 //激光和imu处理操作
 shared_ptr<Preprocess> p_pre(new Preprocess()); // 定义指向激光雷达数据的预处理类Preprocess的智能指针
 shared_ptr<ImuProcess> p_imu(new ImuProcess()); // 定义指向IMU数据预处理类ImuProcess的智能指针
 
-//唤醒所有线程
+//按下ctrl+c后唤醒所有线程
 void SigHandle(int sig)
 {
     flg_exit = true;
@@ -170,7 +181,7 @@ inline void dump_lio_state_to_log(FILE *fp)
     fflush(fp);
 }
 
-//把点从body系转到world系
+//把点从body系转到world系，通过ikfom的位置和姿态
 void pointBodyToWorld_ikfom(PointType const *const pi, PointType *const po, state_ikfom &s)
 {
     V3D p_body(pi->x, pi->y, pi->z);
@@ -1085,16 +1096,16 @@ int main(int argc, char **argv)
                 aver_time_solve = aver_time_solve * (frame_num - 1) / frame_num + (solve_time + solve_H_time) / frame_num;
                 aver_time_const_H_time = aver_time_const_H_time * (frame_num - 1) / frame_num + solve_time / frame_num;
                 T1[time_log_counter] = Measures.lidar_beg_time;
-                s_plot[time_log_counter] = t5 - t0;
-                s_plot2[time_log_counter] = feats_undistort->points.size();
-                s_plot3[time_log_counter] = kdtree_incremental_time;
-                s_plot4[time_log_counter] = kdtree_search_time;
-                s_plot5[time_log_counter] = kdtree_delete_counter;
-                s_plot6[time_log_counter] = kdtree_delete_time;
-                s_plot7[time_log_counter] = kdtree_size_st;
-                s_plot8[time_log_counter] = kdtree_size_end;
-                s_plot9[time_log_counter] = aver_time_consu;
-                s_plot10[time_log_counter] = add_point_size;
+                s_plot[time_log_counter] = t5 - t0;                         //整个流程总时间
+                s_plot2[time_log_counter] = feats_undistort->points.size(); //特征点数量
+                s_plot3[time_log_counter] = kdtree_incremental_time;        // kdtree增量时间
+                s_plot4[time_log_counter] = kdtree_search_time;             // kdtree搜索耗时
+                s_plot5[time_log_counter] = kdtree_delete_counter;          // kdtree删除点数量
+                s_plot6[time_log_counter] = kdtree_delete_time;             // kdtree删除耗时
+                s_plot7[time_log_counter] = kdtree_size_st;                 // kdtree初始大小
+                s_plot8[time_log_counter] = kdtree_size_end;                // kdtree结束大小
+                s_plot9[time_log_counter] = aver_time_consu;                //平均消耗时间
+                s_plot10[time_log_counter] = add_point_size;                //添加点数量
                 time_log_counter++;
                 printf("[ mapping ]: time: IMU + Map + Input Downsample: %0.6f ave match: %0.6f ave solve: %0.6f  ave ICP: %0.6f  map incre: %0.6f ave total: %0.6f icp: %0.6f construct H: %0.6f \n", t1 - t0, aver_time_match, aver_time_solve, t3 - t1, t5 - t3, aver_time_consu, aver_time_icp, aver_time_const_H_time);
                 ext_euler = SO3ToEuler(state_point.offset_R_L_I);
