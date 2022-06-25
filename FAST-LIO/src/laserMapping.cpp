@@ -778,22 +778,22 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         // 拿到的有效点的坐标
         const PointType &laser_p = laserCloudOri->points[i];
         V3D point_this_be(laser_p.x, laser_p.y, laser_p.z);
-        M3D point_be_crossmat; //计算点的叉矩阵
+        M3D point_be_crossmat; //计算点的反对称矩阵
         // 从点值转换到叉乘矩阵
         point_be_crossmat << SKEW_SYM_MATRX(point_this_be);
         // 转换到IMU坐标系下
         V3D point_this = s.offset_R_L_I * point_this_be + s.offset_T_L_I; // offset_R_L_I，offset_T_L_I为IMU的旋转姿态和位移,此时转到了IMU坐标系下
         M3D point_crossmat;
-        point_crossmat << SKEW_SYM_MATRX(point_this); //计算imu中点的叉矩阵
+        point_crossmat << SKEW_SYM_MATRX(point_this); //计算imu中点的反对称矩阵
 
         // 得到对应的曲面/角的法向量
         const PointType &norm_p = corr_normvect->points[i];
         V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
 
-        // 计算测量雅可比矩阵H
-        V3D C(s.rot.conjugate() * norm_vec);                       //旋转矩阵的转置与法向量相乘得到C
-        V3D A(point_crossmat * C);                                 //对imu的差距真与C相乘得到A
-        V3D B(point_be_crossmat * s.offset_R_L_I.conjugate() * C); //对点的差距真与C相乘得到B
+        // 计算测量雅可比矩阵H，见fatlio v1的论文公式(14)，求导这部分没太看懂怎么推出来的,似乎用右扰动模型推导后再转置就是这个结果
+        V3D C(s.rot.conjugate() * norm_vec);                       // R^-1 * 法向量,  s.rot.conjugate（）是四元数共轭，即旋转求逆
+        V3D A(point_crossmat * C);                                 // imu坐标系的点坐标的反对称点乘C
+        V3D B(point_be_crossmat * s.offset_R_L_I.conjugate() * C); //带be的是激光雷达原始坐标系的点云，不带be的是imu坐标系的点坐标
         ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
 
         // 测量:到最近表面/角落的距离

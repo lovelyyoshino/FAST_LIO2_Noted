@@ -352,7 +352,7 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
 
       V3D P_i(it_pcl->x, it_pcl->y, it_pcl->z);                                   //点所在时刻的位置(雷达坐标系下)
       V3D T_ei(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt - imu_state.pos); //从点所在的世界位置-雷达末尾世界位置
-      //.conjugate()取旋转矩阵的转置    (可能作者重新写了这个函数 eigen官方库里这个函数好像没有转置这个操作  实际测试cout矩阵确实输出了转置)
+      //.conjugate()取旋转矩阵的共轭,rot.conjugate（）是四元数共轭，即旋转求逆
       // imu_state.offset_R_L_I是从雷达到惯性的旋转矩阵 简单记为I^R_L
       // imu_state.offset_T_L_I是惯性系下雷达坐标系原点的位置简单记为I^t_L
       //下面去畸变补偿的公式这里倒推一下
@@ -361,7 +361,7 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
       //将右侧矩阵乘过来并加上右侧平移
       //左边变为I^R_L * L^P_e + I^t_L= I^P_e 也就是end时刻点在IMU系下的坐标
       //右边剩下imu_state.rot.conjugate() * (R_i * (imu_state.offset_R_L_I * P_i + imu_state.offset_T_L_I) + T_ei
-      // imu_state.rot.conjugate()是结束时刻IMU到世界坐标系的旋转矩阵的转置 也就是(W^R_i_e)^T
+      // imu_state.rot.conjugate()是结束时刻IMU到世界坐标系的旋转矩阵的逆函数 也就是(W^R_i_e)^T
       // T_ei展开是pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt - imu_state.pos也就是点所在时刻IMU在世界坐标系下的位置 - end时刻IMU在世界坐标系下的位置 W^t_I-W^t_I_e
       //现在等式两边变为 I^P_e =  (W^R_i_e)^T * (R_i * (imu_state.offset_R_L_I * P_i + imu_state.offset_T_L_I) + W^t_I - W^t_I_e
       //(W^R_i_e) * I^P_e + W^t_I_e = (R_i * (imu_state.offset_R_L_I * P_i + imu_state.offset_T_L_I) + W^t_I
