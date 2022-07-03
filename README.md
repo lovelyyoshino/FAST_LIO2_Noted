@@ -2,7 +2,7 @@
 
 ## 中文注释说明
 
-本项目是基于[FAST_LIO_SLAM](https://github.com/GDUT-Kyle/FAST_LIO_SLAM)项目扩展来的，主要讲述了Fast-LIO2全部代码和ikd-tree的算法思路，因此基于自己的理解和思考，在代码里做了相关的中文注释。注释部分难免有误，欢迎大家批评指正。
+本项目是基于[FAST_LIO_SLAM](https://github.com/GDUT-Kyle/FAST_LIO_SLAM)项目扩展来的，主要讲述了Fast-LIO2主程序代码、esikf更新代码和ikd-tree算法，因此基于自己的理解和思考，在代码里做了相关的中文注释。注释部分难免有误，欢迎大家批评指正。
 
 ## News
 
