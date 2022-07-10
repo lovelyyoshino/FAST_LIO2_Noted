@@ -790,7 +790,10 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         const PointType &norm_p = corr_normvect->points[i];
         V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
 
-        // 计算测量雅可比矩阵H，见fatlio v1的论文公式(14)，求导这部分没太看懂怎么推出来的,似乎用右扰动模型推导后再转置就是这个结果
+        // 计算测量雅可比矩阵H，见fatlio v1的论文公式(14)，求导这部分和LINS相同：https://zhuanlan.zhihu.com/p/258972164
+        //FAST-LIO2的特别之处
+		// 1.在IESKF中，状态更新可以看成是一个优化问题，即对位姿状态先验 x_bk_bk+1 的偏差，以及基于观测模型引入的残差函数f  的优化问题。
+		// 2.LINS的特别之处在于，将LOAM的后端优化放在了IESKF的更新过程中实现，也就是用IESKF的迭代更新过程代替了LOAM的高斯牛顿法。
         V3D C(s.rot.conjugate() * norm_vec);                       // R^-1 * 法向量,  s.rot.conjugate（）是四元数共轭，即旋转求逆
         V3D A(point_crossmat * C);                                 // imu坐标系的点坐标的反对称点乘C
         V3D B(point_be_crossmat * s.offset_R_L_I.conjugate() * C); //带be的是激光雷达原始坐标系的点云，不带be的是imu坐标系的点坐标
