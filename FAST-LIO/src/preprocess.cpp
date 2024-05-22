@@ -511,7 +511,6 @@ void Preprocess::give_feature(pcl::PointCloud<PointType> &pl, vector<orgtype> &t
   for (uint i = head; i < plsize2; i++)
   {
     if (types[i].range < blind) // 在盲区范围内的点不做处理
-      continue;
     {
       continue;
     }
